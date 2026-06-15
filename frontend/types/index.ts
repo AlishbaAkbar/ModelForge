@@ -81,6 +81,7 @@ export type NavItem =
   | "datasets"
   | "training"
   | "models"
+  | "pipeline"
   | "settings";
 
 export interface NavItemConfig {

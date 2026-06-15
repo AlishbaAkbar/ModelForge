@@ -232,6 +232,9 @@ export default function Page() {
         {/* Models */}
         {activeNav === "models" && <ModelsPanel models={models} />}
 
+        {/* Pipeline */}
+        {activeNav === "pipeline" && <PipelinePanel />}
+
         {/* Settings */}
         {activeNav === "settings" && <SettingsPanel />}
       </main>
