@@ -1,0 +1,14 @@
+node_modules/
+.next/
+frontend/node_modules/
+frontend/.next/
+__pycache__/
+*.pyc
+*.db
+backend/uploads/
+backend/rag_uploads/
+backend/vector_store/
+models/
+*.gguf
+.env
+venv/
