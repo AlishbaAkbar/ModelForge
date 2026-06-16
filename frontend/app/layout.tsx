@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+// @ts-ignore: CSS imports are handled by Next.js
 import "./globals.css";
 
 export const metadata: Metadata = {

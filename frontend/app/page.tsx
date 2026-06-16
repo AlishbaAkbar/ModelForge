@@ -11,6 +11,9 @@ import DatasetsPanel from "@/components/panels/DatasetsPanel";
 import TrainingPanel from "@/components/panels/TrainingPanel";
 import ModelsPanel from "@/components/panels/ModelsPanel";
 import SettingsPanel from "@/components/panels/SettingsPanel";
+import RagPanel from "@/components/panels/RagPanel";
+import EvaluationPanel from "@/components/panels/EvaluationPanel";
+import DeploymentPanel from "@/components/panels/DeploymentPanel";
 
 import {
   mockChatSessions,
@@ -30,6 +33,7 @@ import type {
   ModelCard,
   ModelOption,
 } from "@/types";
+import PipelinePanel from "@/components/panels/PipelinePanel";
 
 export default function Page() {
   const [activeNav, setActiveNav] = useState<NavItem>("chat");
@@ -234,7 +238,16 @@ export default function Page() {
 
         {/* Pipeline */}
         {activeNav === "pipeline" && <PipelinePanel />}
-
+        {/* RAG */}
+        {activeNav === "rag" && (
+          <div className="relative flex-1 overflow-y-auto">
+            <RagPanel />
+          </div>
+        )}
+        {/* Evaluation */}
+        {activeNav === "evaluation" && <EvaluationPanel />}
+        {/* Deployment */}
+        {activeNav === "deployment" && <DeploymentPanel />}
         {/* Settings */}
         {activeNav === "settings" && <SettingsPanel />}
       </main>

@@ -1,13 +1,3 @@
-/**
- * ModelForge API Client
- *
- * All functions are mocked for now. When connecting to FastAPI backend,
- * replace the mock implementations with real fetch calls.
- *
- * Base URL is configurable via settings → stored in localStorage.
- * Default: http://localhost:8000
- */
-
 import type {
   ChatMessage,
   Dataset,
@@ -16,79 +6,91 @@ import type {
   ModelCard,
   ApiResponse,
 } from "@/types";
-import {
-  mockDatasets,
-  mockTrainingJobs,
-  mockModels,
-} from "@/lib/mockData";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const getBaseUrl = () => {
   if (typeof window !== "undefined") {
-    return localStorage.getItem("apiBaseUrl") || "http://localhost:8000";
+    return localStorage.getItem("apiBaseUrl") || "http://127.0.0.1:8000";
   }
-  return "http://localhost:8000";
+  return "http://127.0.0.1:8000";
 };
 
-const delay = (ms: number) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
 // ─── Chat API ─────────────────────────────────────────────────────────────────
-
-/**
- * Send a message to the model.
- * TODO: Replace with: POST {baseUrl}/api/chat
- * Body: { message, model, session_id }
- */
 export async function sendChatMessage(
   message: string,
   model: string,
   sessionId: string
 ): Promise<ChatMessage> {
-
   const baseUrl = getBaseUrl();
 
-  const response = await fetch(`${baseUrl}/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      message,
-      model,
-      session_id: sessionId,
-    }),
-  });
+  try {
+    const response = await fetch(`${baseUrl}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        model,
+        session_id: sessionId,
+      }),
+    });
 
-  const data = await response.json();
+    if (!response.ok) {
+      throw new Error("Backend returned an error.");
+    }
 
-  return {
-    id: `msg-${Date.now()}`,
-    role: "assistant",
-    content: data.response,
-    timestamp: new Date(),
-    model:
-      model === "finetuned-model"
-        ? "ModelForge-Qwen-Math-LoRA"
-        : "Base Qwen2.5-1.5B-Instruct",
-  };
+    const data = await response.json();
+
+    return {
+      id: `msg-${Date.now()}`,
+      role: "assistant",
+      content:
+        data.response ||
+        "No response returned from backend. Please check Ollama/model.",
+      timestamp: new Date(),
+      model:
+        data.model_used ||
+        (model === "finetuned-model"
+          ? "ModelForge-Qwen-Math-LoRA"
+          : "Base Qwen2.5-1.5B-Instruct"),
+    };
+  } catch {
+    return {
+      id: `msg-${Date.now()}`,
+      role: "assistant",
+      content:
+        "Backend is not reachable. Please make sure FastAPI is running on http://127.0.0.1:8000 and Ollama is running.",
+      timestamp: new Date(),
+      model:
+        model === "finetuned-model"
+          ? "ModelForge-Qwen-Math-LoRA"
+          : "Base Qwen2.5-1.5B-Instruct",
+    };
+  }
 }
 
 // ─── Dataset API ──────────────────────────────────────────────────────────────
-
-/**
- * Fetch all datasets.
- * TODO: Replace with: GET {baseUrl}/api/datasets
- */
 export async function fetchDatasets(): Promise<Dataset[]> {
-  await delay(500);
-  return [...mockDatasets];
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/datasets`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch datasets");
+  }
+
+  const data = await response.json();
+
+  return data.map((d: any) => ({
+    id: d.id,
+    name: d.name,
+    format: d.format,
+    size: d.size || "N/A",
+    rows: d.rows_count ?? d.rows ?? 0,
+    status: d.status || "ready",
+    uploadedAt: new Date(d.uploadedAt || d.uploaded_at || Date.now()),
+  }));
 }
 
-/**
- * Upload a dataset file.
- * TODO: Replace with: POST {baseUrl}/api/datasets/upload (multipart/form-data)
- */
 export async function uploadDataset(
   file: File
 ): Promise<ApiResponse<Dataset>> {
@@ -104,7 +106,7 @@ export async function uploadDataset(
 
   const data = await response.json();
 
-  if (!response.ok) {
+  if (!response.ok || data.status === "error") {
     return {
       status: "error",
       data: {} as Dataset,
@@ -112,116 +114,253 @@ export async function uploadDataset(
     };
   }
 
-  const ext = file.name.split(".").pop()?.toLowerCase() as "csv" | "jsonl";
+  const uploaded = data.dataset;
 
   const newDataset: Dataset = {
-    id: `ds-${Date.now()}`,
-    name: data.filename,
-    format: ext,
+    id: uploaded?.id || `ds-${Date.now()}`,
+    name: uploaded?.name || data.filename || file.name,
+    format: uploaded?.format || (file.name.split(".").pop()?.toLowerCase() as any),
     size: `${(file.size / 1024).toFixed(0)} KB`,
-    rows: 0,
+    rows: uploaded?.rows_count ?? 0,
     status: "ready",
-    uploadedAt: new Date(),
+    uploadedAt: new Date(uploaded?.uploadedAt || Date.now()),
   };
 
   return {
     status: "success",
     data: newDataset,
+    message: data.message || "Dataset uploaded successfully",
+  };
+}
+
+export async function deleteDataset(id: string): Promise<void> {
+  console.log("Delete dataset not implemented yet:", id);
+}
+
+// ─── Training API ─────────────────────────────────────────────────────────────
+export async function fetchTrainingJobs(): Promise<TrainingJob[]> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/training/jobs`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch training jobs");
+  }
+
+  const data = await response.json();
+
+  return data.map((j: any) => ({
+    id: j.id,
+    name: j.name || "ModelForge Training Job",
+    baseModel: j.baseModel || j.base_model || "Qwen2.5-1.5B-Instruct",
+    datasetId: j.datasetId || j.dataset_id || "",
+    datasetName: j.datasetName || "Uploaded Dataset",
+    status: j.status || "pending",
+    progress: j.progress ?? 0,
+    currentStep: j.currentStep ?? 0,
+    totalSteps: j.totalSteps ?? j.training_steps ?? 0,
+    learningRate: j.learningRate ?? j.learning_rate ?? 0,
+    startedAt: new Date(j.startedAt || j.created_at || Date.now()),
+    completedAt: j.completedAt ? new Date(j.completedAt) : undefined,
+    lossHistory: j.lossHistory || [],
+  }));
+}
+
+export async function startTrainingJob(
+  config: TrainingConfig
+): Promise<ApiResponse<TrainingJob>> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/start-training`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    return {
+      status: "error",
+      data: {} as TrainingJob,
+      message: data.message || "Training failed to start",
+    };
+  }
+
+  const job = data.data;
+
+  return {
+    status: "success",
+    data: {
+      id: job.id,
+      name: job.name,
+      baseModel: job.baseModel,
+      datasetId: job.datasetId,
+      datasetName: job.datasetName,
+      status: job.status,
+      progress: job.progress,
+      currentStep: job.currentStep,
+      totalSteps: job.totalSteps,
+      learningRate: job.learningRate,
+      startedAt: new Date(job.startedAt),
+      lossHistory: job.lossHistory || [],
+    },
     message: data.message,
   };
 }
 
-/**
- * Delete a dataset.
- * TODO: Replace with: DELETE {baseUrl}/api/datasets/{id}
- */
-export async function deleteDataset(id: string): Promise<void> {
-  await delay(400);
-  console.log(`[MOCK] Deleted dataset: ${id}`);
-}
-
-// ─── Training API ─────────────────────────────────────────────────────────────
-
-/**
- * Fetch all training jobs.
- * TODO: Replace with: GET {baseUrl}/api/training/jobs
- */
-export async function fetchTrainingJobs(): Promise<TrainingJob[]> {
-  await delay(600);
-  return [...mockTrainingJobs];
-}
-
-/**
- * Start a new training job.
- * TODO: Replace with: POST {baseUrl}/api/training/start
- * Body: TrainingConfig
- */
-export async function startTrainingJob(
-  config: TrainingConfig
-): Promise<ApiResponse<TrainingJob>> {
-  await delay(1000);
-
-  const newJob: TrainingJob = {
-    id: `job-${Date.now()}`,
-    name: config.jobName,
-    baseModel: config.baseModel,
-    datasetId: config.datasetId,
-    datasetName: "Selected Dataset",
-    status: "pending",
-    progress: 0,
-    currentStep: 0,
-    totalSteps: config.trainingSteps,
-    learningRate: config.learningRate,
-    startedAt: new Date(),
-    lossHistory: [],
-  };
-
-  return { status: "success", data: newJob };
-}
-
-/**
- * Fetch training job status.
- * TODO: Replace with: GET {baseUrl}/api/training/jobs/{id}
- */
 export async function fetchJobStatus(jobId: string): Promise<TrainingJob | null> {
-  await delay(300);
-  return mockTrainingJobs.find((j) => j.id === jobId) || null;
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/training/jobs/${jobId}`);
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const j = await response.json();
+
+  if (j.status === "error") return null;
+
+  return {
+    id: j.id,
+    name: j.name || "ModelForge Training Job",
+    baseModel: j.baseModel,
+    datasetId: j.datasetId,
+    datasetName: j.datasetName,
+    status: j.status,
+    progress: j.progress,
+    currentStep: j.currentStep,
+    totalSteps: j.totalSteps,
+    learningRate: j.learningRate,
+    startedAt: new Date(j.startedAt),
+    lossHistory: j.lossHistory || [],
+  };
 }
 
 // ─── Models API ───────────────────────────────────────────────────────────────
-
-/**
- * Fetch all models.
- * TODO: Replace with: GET {baseUrl}/api/models
- */
 export async function fetchModels(): Promise<ModelCard[]> {
-  await delay(500);
-  return [...mockModels];
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/models`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch models");
+  }
+
+  const data = await response.json();
+
+  return data.map((m: any) => ({
+    id: m.id,
+    name: m.name,
+    description:
+      m.description ||
+      (m.type === "adapter"
+        ? "Fine-tuned local GGUF model served through Ollama."
+        : "Base model available for comparison."),
+    type: m.type === "adapter" ? "finetuned" : m.type,
+    status: m.status === "available" ? "ready" : m.status || "ready",
+    parameters: m.parameters || "1.5B",
+    baseModel: m.baseModel || m.base_model,
+    adapter: m.adapter,
+    createdAt: new Date(),
+    accuracy: m.accuracy,
+  }));
 }
 
-/**
- * Test a model with a prompt.
- * TODO: Replace with: POST {baseUrl}/api/models/{id}/test
- * Body: { prompt }
- */
 export async function testModel(
   modelId: string,
   prompt: string
 ): Promise<string> {
-  await delay(1000);
-  return `[Test response from ${modelId}]\n\nYou asked: "${prompt}"\n\nThis is a simulated response from the fine-tuned model. In production, this will call your deployed Gemma adapter via the FastAPI inference endpoint.`;
+  const msg = await sendChatMessage(prompt, modelId, `test-${Date.now()}`);
+  return msg.content;
+}
+
+// ─── RAG API ──────────────────────────────────────────────────────────────────
+export async function uploadRagDocument(file: File): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`${baseUrl}/rag/upload`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status === "error") {
+      throw new Error(data.message || "RAG document upload failed");
+    }
+
+    return data;
+  } catch {
+    return {
+      status: "error",
+      message:
+        "RAG upload failed. Make sure FastAPI is running and the file is a valid PDF.",
+    };
+  }
+}
+
+export async function queryRag(question: string, topK = 2): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  try {
+    const response = await fetch(`${baseUrl}/rag/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question,
+        top_k: topK,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status === "error") {
+      throw new Error(data.message || "RAG query failed");
+    }
+
+    return data;
+  } catch {
+    return {
+      status: "error",
+      answer:
+        "RAG query failed. Please upload a PDF first and make sure Ollama is running.",
+      sources: [],
+    };
+  }
+}
+export async function generateTrainingDataset(file: File): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`${baseUrl}/generate-training-dataset`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    return data;
+  } catch {
+    return {
+      status: "error",
+      message: "Dataset generation failed. Make sure backend is running.",
+    };
+  }
 }
 
 // ─── Settings API ─────────────────────────────────────────────────────────────
-
-/**
- * Save settings.
- * TODO: Replace with: PUT {baseUrl}/api/settings
- */
 export async function saveSettings(settings: {
   apiBaseUrl: string;
 }): Promise<void> {
-  await delay(300);
   if (typeof window !== "undefined") {
     localStorage.setItem("apiBaseUrl", settings.apiBaseUrl);
   }

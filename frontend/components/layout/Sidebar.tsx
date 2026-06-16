@@ -11,6 +11,7 @@ import {
   ChevronRight,
   User,
   Rocket,
+  FileText,
 } from "lucide-react";
 import { cn, truncate, formatDate } from "@/lib/utils";
 import type { NavItem, ChatSession } from "@/types";
@@ -30,6 +31,9 @@ const navItems: { id: NavItem; label: string; icon: React.ReactNode }[] = [
   { id: "training", label: "Training Jobs", icon: <Cpu size={16} /> },
   { id: "models", label: "Models", icon: <Layers size={16} /> },
   { id: "pipeline", label: "Pipeline", icon: <Rocket size={16} /> },
+  { id: "rag", label: "RAG", icon: <FileText size={16} /> },
+  { id: "evaluation", label: "Evaluation", icon: <Zap size={16} /> },
+  { id: "deployment", label: "Deployment", icon: <Rocket size={16} /> },
   { id: "settings", label: "Settings", icon: <Settings size={16} /> },
 ];
 

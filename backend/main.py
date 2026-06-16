@@ -13,7 +13,11 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-
+from dataset_generator import generate_dataset_from_pdf
+import time
+import requests
+from train_lora import run_training
+import threading
 
 app = FastAPI(title="ModelForge Lite Backend")
 Base.metadata.create_all(bind=engine)
@@ -46,9 +50,13 @@ class ChatRequest(BaseModel):
     session_id: str = ""
 class RAGQuery(BaseModel):
     question: str
+    top_k: int = 2
+
 
 @app.post("/rag/query")
 def rag_query(req: RAGQuery):
+    start_time = time.time()
+
     try:
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
@@ -60,29 +68,74 @@ def rag_query(req: RAGQuery):
             allow_dangerous_deserialization=True
         )
 
-        docs = vectorstore.similarity_search(req.question, k=3)
+        docs_with_scores = vectorstore.similarity_search_with_score(
+            req.question,
+            k=req.top_k
+        )
 
         retrieved_chunks = []
-        for i, doc in enumerate(docs):
+        for i, (doc, score) in enumerate(docs_with_scores):
             retrieved_chunks.append({
                 "rank": i + 1,
-                "content": doc.page_content,
+                "score": float(score),
+                "content": doc.page_content[:800],
                 "metadata": doc.metadata
             })
 
-        context = "\n\n".join([doc.page_content for doc in docs])
+        context = "\n\n".join(
+            [doc.page_content[:500] for doc, score in docs_with_scores]
+        )
+        prompt = f"""
+You are ModelForge RAG Assistant.
+
+Answer the user's question using ONLY the uploaded document context below.
+If the answer is not present in the context, say:
+"I could not find this information in the uploaded document."
+
+Keep the answer clear and concise.
+
+DOCUMENT CONTEXT:
+{context}
+
+USER QUESTION:
+{req.question}
+
+FINAL ANSWER:
+"""
+
+        ollama_payload = {
+            "model": "modelforge-qwen-math",
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.2,
+                "num_ctx": 1024
+            }
+        }
+
+        ollama_response = requests.post(
+            "http://localhost:11434/api/generate",
+            json=ollama_payload,
+            timeout=120
+        )
+
+        ollama_data = ollama_response.json()
+        answer = ollama_data.get("response", "No answer generated.")
 
         return {
             "status": "success",
             "question": req.question,
-            "top_k": 3,
-            "retrieved_chunks_count": len(docs),
-            "retrieved_context": context,
-            "answer": (
-                "Based on the uploaded document, these are the most relevant retrieved chunks:\n\n"
-                + context[:1200]
-            ),
-            "sources": retrieved_chunks
+            "answer": answer,
+            "retrieved_context": context[:1500],
+            "sources": retrieved_chunks,
+            "metrics": {
+                "top_k": req.top_k,
+                "retrieved_chunks_count": len(docs_with_scores),
+                "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+                "vector_db": "FAISS",
+                "llm": "modelforge-qwen-math via Ollama",
+                "response_time_ms": round((time.time() - start_time) * 1000, 2)
+            }
         }
 
     except Exception as e:
@@ -255,7 +308,11 @@ def start_training(
         "startedAt": new_job.created_at.isoformat(),
         "lossHistory": [1.9, 1.6, 1.3, 1.1],
     }
-
+    threading.Thread(
+        target=run_training,
+        args=(config.datasetId,),
+        daemon=True
+    ).start()
     return {
         "status": "success",
         "message": "Training job started successfully",
@@ -372,4 +429,35 @@ async def upload_rag_document(file: UploadFile = File(...)):
             "status": "error",
             "message": str(e)
         }
-    
+@app.post("/generate-training-dataset")
+async def generate_training_dataset(file: UploadFile = File(...)):
+    try:
+        ext = file.filename.split(".")[-1].lower()
+
+        if ext != "pdf":
+            return {
+                "status": "error",
+                "message": "Only PDF files are supported for auto dataset generation."
+            }
+
+        file_path = os.path.join(RAG_UPLOAD_DIR, file.filename)
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        result = generate_dataset_from_pdf(file_path)
+
+        return {
+            "status": "success",
+            "message": "Training dataset generated successfully from PDF.",
+            "filename": file.filename,
+            "dataset_id": result["dataset_id"],
+            "path": result["path"],
+            "rows": result["rows"]
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
