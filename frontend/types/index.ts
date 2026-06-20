@@ -73,6 +73,13 @@ export interface TrainingConfig {
   trainingSteps: number;
   learningRate: number;
   jobName: string;
+  hfModel?: string;
+  maxExamples?: number;
+  maxSeqLength?: number;
+  batchSize?: number;
+  gradAccum?: number;
+  loraR?: number;
+  loraAlpha?: number;
 }
 
 // ─── Navigation Types ─────────────────────────────────────────────────────────

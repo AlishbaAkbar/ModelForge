@@ -9,6 +9,7 @@ import {
   RefreshCw,
   AlertCircle,
 } from "lucide-react";
+import { deleteDataset } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import type { Dataset } from "@/types";
 
@@ -53,9 +54,12 @@ export default function DatasetsPanel({
 
   const handleDelete = async (id: string) => {
     setDeleting(id);
-    await new Promise((r) => setTimeout(r, 400));
-    onDelete(id);
-    setDeleting(null);
+    try {
+      await deleteDataset(id);
+      onDelete(id);
+    } finally {
+      setDeleting(null);
+    }
   };
 
   return (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Play, Clock, CheckCircle, XCircle, Cpu, TrendingDown } from "lucide-react";
+import { fetchTrainingJobs } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import type { TrainingJob } from "@/types";
 
@@ -131,10 +132,7 @@ export default function TrainingPanel({ jobs, onNewJob }: TrainingPanelProps) {
       setLoading(true);
       setError("");
 
-      const res = await fetch("http://localhost:8000/training/jobs");
-      const data = await res.json();
-
-      setBackendJobs(data);
+      setBackendJobs(await fetchTrainingJobs());
     } catch {
       setError("Backend is not running or training jobs could not be loaded.");
     } finally {
@@ -145,6 +143,19 @@ export default function TrainingPanel({ jobs, onNewJob }: TrainingPanelProps) {
   useEffect(() => {
     fetchJobs();
   }, []);
+
+  useEffect(() => {
+    setBackendJobs(jobs);
+  }, [jobs]);
+
+  useEffect(() => {
+    if (!backendJobs.some((job) => job.status === "running" || job.status === "pending")) {
+      return;
+    }
+
+    const timer = window.setInterval(fetchJobs, 1500);
+    return () => window.clearInterval(timer);
+  }, [backendJobs]);
 
   const runningJobs = backendJobs.filter((j) => j.status === "running");
   const otherJobs = backendJobs.filter((j) => j.status !== "running");

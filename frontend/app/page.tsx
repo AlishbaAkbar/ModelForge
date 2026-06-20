@@ -16,12 +16,11 @@ import EvaluationPanel from "@/components/panels/EvaluationPanel";
 import DeploymentPanel from "@/components/panels/DeploymentPanel";
 
 import {
-  mockChatSessions,
-  mockDatasets,
-  mockTrainingJobs,
-  mockModels,
-} from "@/lib/mockData";
-import { sendChatMessage } from "@/lib/api";
+  fetchDatasets,
+  fetchModels,
+  fetchTrainingJobs,
+  sendChatMessage,
+} from "@/lib/api";
 import { generateId } from "@/lib/utils";
 
 import type {
@@ -37,14 +36,14 @@ import PipelinePanel from "@/components/panels/PipelinePanel";
 
 export default function Page() {
   const [activeNav, setActiveNav] = useState<NavItem>("chat");
-  const [sessions, setSessions] = useState<ChatSession[]>(mockChatSessions);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelOption>("base-gemma");
 
-  const [datasets, setDatasets] = useState<Dataset[]>(mockDatasets);
-  const [trainingJobs, setTrainingJobs] = useState<TrainingJob[]>(mockTrainingJobs);
-  const [models] = useState<ModelCard[]>(mockModels);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [trainingJobs, setTrainingJobs] = useState<TrainingJob[]>([]);
+  const [models, setModels] = useState<ModelCard[]>([]);
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showTrainingModal, setShowTrainingModal] = useState(false);
@@ -57,6 +56,30 @@ export default function Page() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeSession?.messages, isTyping]);
+
+  useEffect(() => {
+    const loadWorkspaceState = async () => {
+      const [datasetResult, jobResult, modelResult] = await Promise.allSettled([
+        fetchDatasets(),
+        fetchTrainingJobs(),
+        fetchModels(),
+      ]);
+
+      if (datasetResult.status === "fulfilled") {
+        setDatasets(datasetResult.value);
+      }
+
+      if (jobResult.status === "fulfilled") {
+        setTrainingJobs(jobResult.value);
+      }
+
+      if (modelResult.status === "fulfilled") {
+        setModels(modelResult.value);
+      }
+    };
+
+    loadWorkspaceState();
+  }, []);
 
   const handleNewChat = () => {
     setActiveSessionId(null);
@@ -104,7 +127,6 @@ export default function Page() {
     // Show typing indicator
     setIsTyping(true);
 
-    // TODO: Replace with real FastAPI call when backend is ready
     const response = await sendChatMessage(content, selectedModel, session.id);
 
     setIsTyping(false);

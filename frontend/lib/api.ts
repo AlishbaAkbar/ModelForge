@@ -134,7 +134,17 @@ export async function uploadDataset(
 }
 
 export async function deleteDataset(id: string): Promise<void> {
-  console.log("Delete dataset not implemented yet:", id);
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/datasets/${id}`, {
+    method: "DELETE",
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "Dataset delete failed");
+  }
 }
 
 // ─── Training API ─────────────────────────────────────────────────────────────
@@ -239,6 +249,18 @@ export async function fetchJobStatus(jobId: string): Promise<TrainingJob | null>
 }
 
 // ─── Models API ───────────────────────────────────────────────────────────────
+export async function fetchTrainingArtifacts(jobId: string): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/training/jobs/${jobId}/artifacts`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch training artifacts");
+  }
+
+  return response.json();
+}
+
 export async function fetchModels(): Promise<ModelCard[]> {
   const baseUrl = getBaseUrl();
 
@@ -358,6 +380,18 @@ export async function generateTrainingDataset(file: File): Promise<any> {
 }
 
 // ─── Settings API ─────────────────────────────────────────────────────────────
+export async function fetchPipelineStatus(): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/pipeline/status`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch pipeline status");
+  }
+
+  return response.json();
+}
+
 export async function saveSettings(settings: {
   apiBaseUrl: string;
 }): Promise<void> {

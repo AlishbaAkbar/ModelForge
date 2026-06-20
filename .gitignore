@@ -8,6 +8,9 @@ __pycache__/
 backend/uploads/
 backend/rag_uploads/
 backend/vector_store/
+backend/artifacts/
+backend/generated_datasets/generated-*.jsonl
+frontend/tsconfig.tsbuildinfo
 models/
 *.gguf
 .env

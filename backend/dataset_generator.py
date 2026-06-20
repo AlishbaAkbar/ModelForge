@@ -4,8 +4,13 @@ import uuid
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-GENERATED_DIR = "generated_datasets"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+GENERATED_DIR = os.path.join(BASE_DIR, "generated_datasets")
 os.makedirs(GENERATED_DIR, exist_ok=True)
+
+
+def _clean_text(text: str) -> str:
+    return " ".join(text.replace("\x00", " ").split())
 
 
 def generate_dataset_from_pdf(file_path: str):
@@ -21,11 +26,10 @@ def generate_dataset_from_pdf(file_path: str):
 
     dataset_id = f"generated-{uuid.uuid4().hex[:8]}"
     output_path = os.path.join(GENERATED_DIR, f"{dataset_id}.jsonl")
-
     rows = []
 
     for i, chunk in enumerate(chunks[:20]):
-        text = chunk.page_content.strip()
+        text = _clean_text(chunk.page_content)
 
         if len(text) < 100:
             continue
@@ -37,6 +41,9 @@ def generate_dataset_from_pdf(file_path: str):
         }
 
         rows.append(row)
+
+    if not rows:
+        raise ValueError("No usable text chunks were found in the PDF.")
 
     with open(output_path, "w", encoding="utf-8") as f:
         for row in rows:
