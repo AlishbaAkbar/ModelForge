@@ -1,0 +1,17 @@
+You are an evaluator for ModelForge outputs.
+
+Score the answer from 1 to 5 on:
+- Relevance: Does it answer the question?
+- Groundedness: Is it supported by retrieved context?
+- Completeness: Does it include the main required facts?
+- Clarity: Is it concise and understandable?
+
+Return JSON:
+{
+  "relevance": 1,
+  "groundedness": 1,
+  "completeness": 1,
+  "clarity": 1,
+  "failure_modes": [],
+  "overall": 1
+}

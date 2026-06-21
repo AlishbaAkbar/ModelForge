@@ -16,9 +16,14 @@ import {
   Rocket,
 } from "lucide-react";
 import {
+  downloadKaggleOutput,
+  exportColabPackage,
+  exportKagglePackage,
   fetchPipelineStatus,
+  fetchKaggleStatus,
   fetchTrainingArtifacts,
   generateTrainingDataset,
+  runKaggleJob,
   startTrainingJob,
   uploadDataset as uploadDatasetFile,
 } from "@/lib/api";
@@ -157,6 +162,8 @@ export default function PipelinePanel() {
   const [datasetFile, setDatasetFile] = useState<File | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [datasetId, setDatasetId] = useState("");
+  const [colabPackage, setColabPackage] = useState<any>(null);
+  const [kagglePackage, setKagglePackage] = useState<any>(null);
   const [trainingConfig, setTrainingConfig] = useState({
     hfModel: "sshleifer/tiny-gpt2",
     trainingSteps: 5,
@@ -168,7 +175,27 @@ export default function PipelinePanel() {
     loraR: 8,
     loraAlpha: 16,
   });
-  const [busyAction, setBusyAction] = useState<"refresh" | "upload" | "pdf" | "train" | null>(null);
+  const [remoteConfig, setRemoteConfig] = useState({
+    baseModel: "unsloth/Qwen2.5-1.5B-Instruct-bnb-4bit",
+    trainingSteps: 60,
+    learningRate: 0.0002,
+    maxExamples: 500,
+    maxSeqLength: 1024,
+    loraR: 16,
+    loraAlpha: 16,
+    driveRoot: "/content/drive/MyDrive/ModelForge/jobs",
+  });
+  const [kaggleConfig, setKaggleConfig] = useState({
+    kaggleUsername: "",
+    baseModel: "unsloth/Qwen2.5-1.5B-Instruct-bnb-4bit",
+    trainingSteps: 60,
+    learningRate: 0.0002,
+    maxExamples: 500,
+    maxSeqLength: 1024,
+    loraR: 16,
+    loraAlpha: 16,
+  });
+  const [busyAction, setBusyAction] = useState<"refresh" | "upload" | "pdf" | "train" | "colab" | "kaggle" | "kaggle-run" | "kaggle-status" | "kaggle-download" | null>(null);
 
   const refreshStatus = async () => {
     try {
@@ -288,6 +315,126 @@ export default function PipelinePanel() {
       await refreshStatus();
     } else {
       setError(data.message || "Training failed to start.");
+    }
+
+    setBusyAction(null);
+  };
+
+  const prepareColabPackage = async () => {
+    const selectedDatasetId = datasetId || status.latestDataset?.id;
+
+    if (!selectedDatasetId) {
+      setMessage("Upload or generate a dataset before preparing a Colab package.");
+      return;
+    }
+
+    setBusyAction("colab");
+    setMessage("");
+    setError("");
+
+    try {
+      const data = await exportColabPackage({
+        datasetId: selectedDatasetId,
+        ...remoteConfig,
+      });
+      setColabPackage(data);
+      setMessage(`Colab QLoRA package created: ${data.jobId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Colab package export failed.");
+    }
+
+    setBusyAction(null);
+  };
+
+  const prepareKagglePackage = async () => {
+    const selectedDatasetId = datasetId || status.latestDataset?.id;
+
+    if (!selectedDatasetId) {
+      setMessage("Upload or generate a dataset before preparing a Kaggle package.");
+      return;
+    }
+
+    if (!kaggleConfig.kaggleUsername.trim()) {
+      setMessage("Enter your Kaggle username before preparing the runner.");
+      return;
+    }
+
+    setBusyAction("kaggle");
+    setMessage("");
+    setError("");
+
+    try {
+      const data = await exportKagglePackage({
+        datasetId: selectedDatasetId,
+        ...kaggleConfig,
+      });
+      setKagglePackage(data);
+      setMessage(`Kaggle GPU package created: ${data.jobId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kaggle package export failed.");
+    }
+
+    setBusyAction(null);
+  };
+
+  const submitKagglePackage = async () => {
+    if (!kagglePackage?.jobId) {
+      setMessage("Prepare a Kaggle package first.");
+      return;
+    }
+
+    setBusyAction("kaggle-run");
+    setMessage("");
+    setError("");
+
+    try {
+      const data = await runKaggleJob(kagglePackage.jobId);
+      setKagglePackage((prev: any) => ({ ...prev, ...data }));
+      setMessage(data.message || "Kaggle job submitted.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kaggle job submission failed.");
+    }
+
+    setBusyAction(null);
+  };
+
+  const reloadKaggleStatus = async () => {
+    if (!kagglePackage?.jobId) {
+      setMessage("Prepare a Kaggle package first.");
+      return;
+    }
+
+    setBusyAction("kaggle-status");
+    setMessage("");
+    setError("");
+
+    try {
+      const data = await fetchKaggleStatus(kagglePackage.jobId);
+      setKagglePackage((prev: any) => ({ ...prev, ...data }));
+      setMessage(data.message || "Kaggle status refreshed.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kaggle status refresh failed.");
+    }
+
+    setBusyAction(null);
+  };
+
+  const fetchKaggleOutput = async () => {
+    if (!kagglePackage?.jobId) {
+      setMessage("Prepare a Kaggle package first.");
+      return;
+    }
+
+    setBusyAction("kaggle-download");
+    setMessage("");
+    setError("");
+
+    try {
+      const data = await downloadKaggleOutput(kagglePackage.jobId);
+      setKagglePackage((prev: any) => ({ ...prev, ...data }));
+      setMessage(data.message || "Kaggle outputs downloaded.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kaggle output download failed.");
     }
 
     setBusyAction(null);
@@ -515,6 +662,253 @@ export default function PipelinePanel() {
               {busyAction === "train" ? "Starting..." : "Start Training"}
             </button>
           </div>
+        </div>
+
+        <div className="mb-6 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-5">
+          <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-white">Remote Colab QLoRA Mode</h2>
+              <p className="mt-1 text-xs leading-relaxed text-[#9aa0b5]">
+                Prepare a Google Colab package for real Qwen fine-tuning on GPU with Unsloth.
+              </p>
+            </div>
+            <button
+              onClick={prepareColabPackage}
+              disabled={isWorking || (!datasetId && !status.latestDataset)}
+              className="rounded-lg bg-violet-500 px-4 py-2 text-sm font-medium text-white hover:bg-violet-600 disabled:opacity-50"
+            >
+              {busyAction === "colab" ? "Preparing..." : "Prepare Colab Package"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+            <div className="lg:col-span-2">
+              <label className="mb-1 block text-xs text-[#8b91a3]">Unsloth Base Model</label>
+              <input
+                value={remoteConfig.baseModel}
+                onChange={(e) => setRemoteConfig((prev) => ({ ...prev, baseModel: e.target.value }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-violet-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">Steps</label>
+              <input
+                type="number"
+                min={1}
+                value={remoteConfig.trainingSteps}
+                onChange={(e) => setRemoteConfig((prev) => ({ ...prev, trainingSteps: numberValue(e.target.value, 60) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-violet-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">LR</label>
+              <input
+                type="number"
+                min={0.000001}
+                step={0.000001}
+                value={remoteConfig.learningRate}
+                onChange={(e) => setRemoteConfig((prev) => ({ ...prev, learningRate: numberValue(e.target.value, 0.0002) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-violet-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">Max Examples</label>
+              <input
+                type="number"
+                min={1}
+                value={remoteConfig.maxExamples}
+                onChange={(e) => setRemoteConfig((prev) => ({ ...prev, maxExamples: numberValue(e.target.value, 500) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-violet-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">Seq Length</label>
+              <input
+                type="number"
+                min={128}
+                value={remoteConfig.maxSeqLength}
+                onChange={(e) => setRemoteConfig((prev) => ({ ...prev, maxSeqLength: numberValue(e.target.value, 1024) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-violet-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">LoRA Rank</label>
+              <input
+                type="number"
+                min={1}
+                value={remoteConfig.loraR}
+                onChange={(e) => setRemoteConfig((prev) => ({ ...prev, loraR: numberValue(e.target.value, 16) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-violet-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">LoRA Alpha</label>
+              <input
+                type="number"
+                min={1}
+                value={remoteConfig.loraAlpha}
+                onChange={(e) => setRemoteConfig((prev) => ({ ...prev, loraAlpha: numberValue(e.target.value, 16) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-violet-500/40"
+              />
+            </div>
+            <div className="lg:col-span-4">
+              <label className="mb-1 block text-xs text-[#8b91a3]">Drive Jobs Root</label>
+              <input
+                value={remoteConfig.driveRoot}
+                onChange={(e) => setRemoteConfig((prev) => ({ ...prev, driveRoot: e.target.value }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-violet-500/40"
+              />
+            </div>
+          </div>
+
+          {colabPackage && (
+            <div className="mt-4 rounded-lg border border-violet-500/20 bg-black/20 p-4 text-xs text-[#d6d8e4]">
+              <div className="mb-2 font-semibold text-violet-300">Package Ready: {colabPackage.jobId}</div>
+              <div>Export folder: {colabPackage.exportDir}</div>
+              <div>Drive folder: {colabPackage.driveJobDir}</div>
+              <div>Examples: {colabPackage.examplesExported}</div>
+              <div className="mt-2 break-words">Notebook: {colabPackage.files?.notebook}</div>
+            </div>
+          )}
+        </div>
+
+        <div className="mb-6 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.055] p-5">
+          <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-white">Kaggle GPU Runner</h2>
+              <p className="mt-1 text-xs leading-relaxed text-[#9aa0b5]">
+                Submit a private Kaggle Dataset plus GPU notebook from ModelForge, then download adapter outputs.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={prepareKagglePackage}
+                disabled={isWorking || (!datasetId && !status.latestDataset)}
+                className="rounded-lg bg-cyan-500 px-3 py-2 text-xs font-medium text-white hover:bg-cyan-600 disabled:opacity-50"
+              >
+                {busyAction === "kaggle" ? "Preparing..." : "Prepare"}
+              </button>
+              <button
+                onClick={submitKagglePackage}
+                disabled={isWorking || !kagglePackage?.jobId}
+                className="rounded-lg bg-emerald-500 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {busyAction === "kaggle-run" ? "Submitting..." : "Run"}
+              </button>
+              <button
+                onClick={reloadKaggleStatus}
+                disabled={isWorking || !kagglePackage?.jobId}
+                className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-[#c8cdd8] hover:border-cyan-500/30 hover:text-cyan-300 disabled:opacity-50"
+              >
+                {busyAction === "kaggle-status" ? "Checking..." : "Status"}
+              </button>
+              <button
+                onClick={fetchKaggleOutput}
+                disabled={isWorking || !kagglePackage?.jobId}
+                className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-[#c8cdd8] hover:border-emerald-500/30 hover:text-emerald-300 disabled:opacity-50"
+              >
+                {busyAction === "kaggle-download" ? "Downloading..." : "Download Output"}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">Kaggle Username</label>
+              <input
+                value={kaggleConfig.kaggleUsername}
+                onChange={(e) => setKaggleConfig((prev) => ({ ...prev, kaggleUsername: e.target.value }))}
+                placeholder="your-kaggle-username"
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-cyan-500/40"
+              />
+            </div>
+            <div className="lg:col-span-2">
+              <label className="mb-1 block text-xs text-[#8b91a3]">Unsloth Base Model</label>
+              <input
+                value={kaggleConfig.baseModel}
+                onChange={(e) => setKaggleConfig((prev) => ({ ...prev, baseModel: e.target.value }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-cyan-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">Steps</label>
+              <input
+                type="number"
+                min={1}
+                value={kaggleConfig.trainingSteps}
+                onChange={(e) => setKaggleConfig((prev) => ({ ...prev, trainingSteps: numberValue(e.target.value, 60) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-cyan-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">LR</label>
+              <input
+                type="number"
+                min={0.000001}
+                step={0.000001}
+                value={kaggleConfig.learningRate}
+                onChange={(e) => setKaggleConfig((prev) => ({ ...prev, learningRate: numberValue(e.target.value, 0.0002) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-cyan-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">Max Examples</label>
+              <input
+                type="number"
+                min={1}
+                value={kaggleConfig.maxExamples}
+                onChange={(e) => setKaggleConfig((prev) => ({ ...prev, maxExamples: numberValue(e.target.value, 500) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-cyan-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">Seq Length</label>
+              <input
+                type="number"
+                min={128}
+                value={kaggleConfig.maxSeqLength}
+                onChange={(e) => setKaggleConfig((prev) => ({ ...prev, maxSeqLength: numberValue(e.target.value, 1024) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-cyan-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">LoRA Rank</label>
+              <input
+                type="number"
+                min={1}
+                value={kaggleConfig.loraR}
+                onChange={(e) => setKaggleConfig((prev) => ({ ...prev, loraR: numberValue(e.target.value, 16) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-cyan-500/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#8b91a3]">LoRA Alpha</label>
+              <input
+                type="number"
+                min={1}
+                value={kaggleConfig.loraAlpha}
+                onChange={(e) => setKaggleConfig((prev) => ({ ...prev, loraAlpha: numberValue(e.target.value, 16) }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-cyan-500/40"
+              />
+            </div>
+          </div>
+
+          {kagglePackage && (
+            <div className="mt-4 rounded-lg border border-cyan-500/20 bg-black/20 p-4 text-xs text-[#d6d8e4]">
+              <div className="mb-2 font-semibold text-cyan-300">Kaggle Job: {kagglePackage.jobId}</div>
+              <div>Status: {kagglePackage.status}</div>
+              <div className="break-words">Dataset: {kagglePackage.datasetRef}</div>
+              <div className="break-words">Kernel: {kagglePackage.kernelRef}</div>
+              <div>Examples: {kagglePackage.examplesExported}</div>
+              <div className="break-words">Output: {kagglePackage.outputDir}</div>
+              {kagglePackage.outputFiles?.length ? (
+                <div className="mt-2 break-words">Files: {kagglePackage.outputFiles.join(", ")}</div>
+              ) : null}
+              {kagglePackage.message && (
+                <div className="mt-2 text-cyan-200">{kagglePackage.message}</div>
+              )}
+            </div>
+          )}
         </div>
 
         {latestJob && ["pending", "running"].includes(latestJob.status) && (

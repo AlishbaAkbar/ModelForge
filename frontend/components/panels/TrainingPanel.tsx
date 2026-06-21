@@ -123,7 +123,7 @@ function ProgressBar({ progress }: { progress: number }) {
 }
 
 export default function TrainingPanel({ jobs, onNewJob }: TrainingPanelProps) {
-  const [backendJobs, setBackendJobs] = useState<TrainingJob[]>(jobs);
+  const [backendJobs, setBackendJobs] = useState<TrainingJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -145,7 +145,9 @@ export default function TrainingPanel({ jobs, onNewJob }: TrainingPanelProps) {
   }, []);
 
   useEffect(() => {
-    setBackendJobs(jobs);
+    if (jobs.length > 0) {
+      setBackendJobs(jobs);
+    }
   }, [jobs]);
 
   useEffect(() => {

@@ -52,34 +52,46 @@ export default function Page() {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
+  const selectedModelName =
+    models.find((model) => model.id === selectedModel)?.name ||
+    (selectedModel === "finetuned-model"
+      ? "Qwen Math Fine-Tuned"
+      : "Base Qwen2.5-1.5B-Instruct");
+
+  const loadWorkspaceState = async () => {
+    const [datasetResult, jobResult, modelResult] = await Promise.allSettled([
+      fetchDatasets(),
+      fetchTrainingJobs(),
+      fetchModels(),
+    ]);
+
+    if (datasetResult.status === "fulfilled") {
+      setDatasets(datasetResult.value);
+    }
+
+    if (jobResult.status === "fulfilled") {
+      setTrainingJobs(jobResult.value);
+    }
+
+    if (modelResult.status === "fulfilled") {
+      setModels(modelResult.value);
+    }
+  };
+
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeSession?.messages, isTyping]);
 
   useEffect(() => {
-    const loadWorkspaceState = async () => {
-      const [datasetResult, jobResult, modelResult] = await Promise.allSettled([
-        fetchDatasets(),
-        fetchTrainingJobs(),
-        fetchModels(),
-      ]);
-
-      if (datasetResult.status === "fulfilled") {
-        setDatasets(datasetResult.value);
-      }
-
-      if (jobResult.status === "fulfilled") {
-        setTrainingJobs(jobResult.value);
-      }
-
-      if (modelResult.status === "fulfilled") {
-        setModels(modelResult.value);
-      }
-    };
-
     loadWorkspaceState();
   }, []);
+
+  useEffect(() => {
+    if (["datasets", "training", "models", "pipeline"].includes(activeNav)) {
+      loadWorkspaceState();
+    }
+  }, [activeNav]);
 
   const handleNewChat = () => {
     setActiveSessionId(null);
@@ -215,9 +227,7 @@ export default function Page() {
                   {isTyping && (
                     <TypingIndicator
                       model={
-                        selectedModel === "finetuned-model"
-                          ? "ModelForge-Qwen-Math-LoRA"
-                          : "Base Qwen2.5-1.5B-Instruct 2B"
+                        selectedModelName
                       }
                     />
                   )}
@@ -233,6 +243,7 @@ export default function Page() {
               onOpenTraining={() => setShowTrainingModal(true)}
               model={selectedModel}
               onModelChange={setSelectedModel}
+              models={models}
               disabled={isTyping}
             />
           </div>
@@ -256,7 +267,9 @@ export default function Page() {
         )}
 
         {/* Models */}
-        {activeNav === "models" && <ModelsPanel models={models} />}
+        {activeNav === "models" && (
+          <ModelsPanel models={models} onModelsChanged={loadWorkspaceState} />
+        )}
 
         {/* Pipeline */}
         {activeNav === "pipeline" && <PipelinePanel />}

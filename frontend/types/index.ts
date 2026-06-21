@@ -19,7 +19,7 @@ export interface ChatSession {
 }
 
 // ─── Model Types ──────────────────────────────────────────────────────────────
-export type ModelOption = "base-gemma" | "finetuned-model";
+export type ModelOption = string;
 
 export interface ModelCard {
   id: string;
@@ -30,6 +30,22 @@ export interface ModelCard {
   parameters: string;
   baseModel?: string;
   adapter?: string;
+  adapterPath?: string;
+  trainingJobId?: string;
+  datasetId?: string;
+  datasetName?: string;
+  deployed?: boolean;
+  deploymentId?: string;
+  runtime?: string;
+  runtimeModel?: string;
+  defaultRuntimeModel?: string;
+  deployReady?: boolean;
+  deployBlocker?: string;
+  artifactStatus?: string;
+  adapterBase?: string;
+  resolvedAdapterPath?: string;
+  lastDeploymentStatus?: string;
+  lastDeploymentMessage?: string;
   createdAt: Date;
   accuracy?: number;
 }

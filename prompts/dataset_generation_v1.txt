@@ -1,0 +1,11 @@
+Convert source document content into fine-tuning examples.
+
+Output JSONL-compatible examples with this schema:
+{"instruction": "...", "input": "...", "response": "..."}
+
+Rules:
+- Generate examples grounded only in the source document.
+- Prefer clear task instructions and concise responses.
+- Avoid personal data unless it is explicitly part of the source and needed for the task.
+- Remove duplicates and low-quality examples.
+- Cover definitions, procedures, edge cases, and short factual Q&A.

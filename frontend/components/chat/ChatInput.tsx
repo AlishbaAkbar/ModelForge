@@ -10,7 +10,7 @@ import {
   Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ModelOption } from "@/types";
+import type { ModelCard, ModelOption } from "@/types";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -18,6 +18,7 @@ interface ChatInputProps {
   onOpenTraining: () => void;
   model: ModelOption;
   onModelChange: (model: ModelOption) => void;
+  models?: ModelCard[];
   disabled?: boolean;
 }
 
@@ -27,6 +28,7 @@ export default function ChatInput({
   onOpenTraining,
   model,
   onModelChange,
+  models = [],
   disabled,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
@@ -57,20 +59,33 @@ export default function ChatInput({
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   };
 
-  const modelLabels: Record<ModelOption, { label: string; icon: React.ReactNode; desc: string }> = {
-    "base-gemma": {
+  const modelOptions = [
+    {
+      id: "base-gemma",
       label: "Base Qwen2.5-1.5B-Instruct",
       icon: <Layers size={13} />,
       desc: "Qwen2.5 1.5B Instruct",
+      isFineTuned: false,
     },
-    "finetuned-model": {
-      label: "Fine-tuned Model",
+    {
+      id: "finetuned-model",
+      label: "Qwen Math Fine-Tuned",
       icon: <Zap size={13} />,
-      desc: "ModelForge-Qwen-Math-LoRA",
+      desc: "Ollama: modelforge-qwen-math",
+      isFineTuned: true,
     },
-  };
+    ...models
+      .filter((item) => item.type === "finetuned" && item.deployed && item.runtimeModel)
+      .map((item) => ({
+        id: item.id,
+        label: item.name,
+        icon: <Zap size={13} />,
+        desc: item.runtimeModel || item.baseModel || "Deployed custom model",
+        isFineTuned: true,
+      })),
+  ];
 
-  const current = modelLabels[model];
+  const current = modelOptions.find((item) => item.id === model) || modelOptions[0];
 
   return (
     <div className="px-4 pb-4 pt-2 border-t border-white/[0.06] bg-[#0c0e14]">
@@ -105,7 +120,7 @@ export default function ChatInput({
           >
             <span
               className={
-                model === "finetuned-model" ? "text-sky-400" : "text-[#6b7080]"
+                current.isFineTuned ? "text-sky-400" : "text-[#6b7080]"
               }
             >
               {current.icon}
@@ -122,40 +137,39 @@ export default function ChatInput({
 
           {modelOpen && (
             <div className="absolute bottom-full right-0 mb-2 w-56 forge-card py-1 z-50 animate-slide-up">
-              {(["base-gemma", "finetuned-model"] as ModelOption[]).map(
-                (opt) => {
-                  const m = modelLabels[opt];
+              {modelOptions.map(
+                (option) => {
                   return (
                     <button
-                      key={opt}
+                      key={option.id}
                       onClick={() => {
-                        onModelChange(opt);
+                        onModelChange(option.id);
                         setModelOpen(false);
                       }}
                       className={cn(
                         "w-full flex items-start gap-3 px-3 py-2.5 hover:bg-white/[0.05] transition-colors text-left",
-                        model === opt && "bg-white/[0.04]"
+                        model === option.id && "bg-white/[0.04]"
                       )}
                     >
                       <span
                         className={cn(
                           "mt-0.5",
-                          opt === "finetuned-model"
+                          option.isFineTuned
                             ? "text-sky-400"
                             : "text-[#6b7080]"
                         )}
                       >
-                        {m.icon}
+                        {option.icon}
                       </span>
                       <div>
                         <div className="text-xs font-medium text-[#c8cdd8]">
-                          {m.label}
+                          {option.label}
                         </div>
                         <div className="text-[10px] text-[#555a6e]">
-                          {m.desc}
+                          {option.desc}
                         </div>
                       </div>
-                      {model === opt && (
+                      {model === option.id && (
                         <div className="ml-auto w-1.5 h-1.5 rounded-full bg-sky-400 mt-1" />
                       )}
                     </button>

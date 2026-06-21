@@ -9,6 +9,9 @@ backend/uploads/
 backend/rag_uploads/
 backend/vector_store/
 backend/artifacts/
+backend/colab_exports/
+backend/kaggle_exports/
+backend/kaggle_config/
 backend/generated_datasets/generated-*.jsonl
 frontend/tsconfig.tsbuildinfo
 models/

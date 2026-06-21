@@ -15,6 +15,16 @@ const getBaseUrl = () => {
   return "http://127.0.0.1:8000";
 };
 
+export function cleanTerminalText(value: unknown): string {
+  return String(value || "")
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 // ─── Chat API ─────────────────────────────────────────────────────────────────
 export async function sendChatMessage(
   message: string,
@@ -285,7 +295,23 @@ export async function fetchModels(): Promise<ModelCard[]> {
     parameters: m.parameters || "1.5B",
     baseModel: m.baseModel || m.base_model,
     adapter: m.adapter,
-    createdAt: new Date(),
+    adapterPath: m.adapterPath,
+    trainingJobId: m.trainingJobId,
+    datasetId: m.datasetId,
+    datasetName: m.datasetName,
+    deployed: Boolean(m.deployed),
+    deploymentId: m.deploymentId,
+    runtime: m.runtime,
+    runtimeModel: m.runtimeModel,
+    defaultRuntimeModel: m.defaultRuntimeModel,
+    deployReady: Boolean(m.deployReady),
+    deployBlocker: m.deployBlocker,
+    artifactStatus: m.artifactStatus,
+    adapterBase: m.adapterBase,
+    resolvedAdapterPath: m.resolvedAdapterPath,
+    lastDeploymentStatus: m.lastDeploymentStatus,
+    lastDeploymentMessage: cleanTerminalText(m.lastDeploymentMessage),
+    createdAt: new Date(m.createdAt || m.created_at || Date.now()),
     accuracy: m.accuracy,
   }));
 }
@@ -294,8 +320,115 @@ export async function testModel(
   modelId: string,
   prompt: string
 ): Promise<string> {
-  const msg = await sendChatMessage(prompt, modelId, `test-${Date.now()}`);
-  return msg.content;
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/models/${modelId}/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(cleanTerminalText(data.message) || "Model test failed");
+  }
+
+  return cleanTerminalText(data.response || data.message) || "No response returned.";
+}
+
+export async function deployModelToOllama(
+  modelId: string,
+  ollamaModel: string,
+  baseRuntimeModel = "qwen2.5:1.5b"
+): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/models/${modelId}/deploy/ollama`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ollamaModel, baseRuntimeModel }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    throw new Error(cleanTerminalText(data.message) || "Ollama deployment failed");
+  }
+
+  return data;
+}
+
+export async function bindModelToOllamaRuntime(
+  modelId: string,
+  ollamaModel: string,
+  baseRuntimeModel = "qwen2.5:1.5b"
+): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/models/${modelId}/bind/ollama`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ollamaModel, baseRuntimeModel }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    throw new Error(cleanTerminalText(data.message) || "Ollama runtime binding failed");
+  }
+
+  return data;
+}
+
+export async function fetchModelDetails(modelId: string): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/models/${modelId}`);
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "Model details could not be loaded");
+  }
+
+  return data;
+}
+
+export async function importAdapter(
+  file: File,
+  options: { datasetId?: string; modelName?: string } = {}
+): Promise<any> {
+  const baseUrl = getBaseUrl();
+  const formData = new FormData();
+  formData.append("file", file);
+  if (options.datasetId) formData.append("datasetId", options.datasetId);
+  if (options.modelName) formData.append("modelName", options.modelName);
+
+  const response = await fetch(`${baseUrl}/models/import-adapter`, {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "Adapter import failed");
+  }
+
+  return data;
+}
+
+export async function fetchDeployments(): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/deployments`);
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "Deployments could not be loaded");
+  }
+
+  return data;
 }
 
 // ─── RAG API ──────────────────────────────────────────────────────────────────
@@ -327,7 +460,53 @@ export async function uploadRagDocument(file: File): Promise<any> {
   }
 }
 
-export async function queryRag(question: string, topK = 2): Promise<any> {
+export async function fetchRagDocuments(): Promise<any> {
+  const baseUrl = getBaseUrl();
+  const response = await fetch(`${baseUrl}/rag/documents`);
+  const data = await response.json();
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "RAG documents could not be loaded");
+  }
+  return data;
+}
+
+export async function fetchRagJob(jobId: string): Promise<any> {
+  const baseUrl = getBaseUrl();
+  const response = await fetch(`${baseUrl}/rag/jobs/${jobId}`);
+  const data = await response.json();
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "RAG job could not be loaded");
+  }
+  return data;
+}
+
+export async function deleteRagDocument(documentId: string): Promise<any> {
+  const baseUrl = getBaseUrl();
+  const response = await fetch(`${baseUrl}/rag/documents/${documentId}`, {
+    method: "DELETE",
+  });
+  const data = await response.json();
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "RAG document delete failed");
+  }
+  return data;
+}
+
+export async function rebuildRagIndex(documentId?: string): Promise<any> {
+  const baseUrl = getBaseUrl();
+  const response = await fetch(`${baseUrl}/rag/rebuild`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ document_id: documentId || null }),
+  });
+  const data = await response.json();
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "RAG rebuild failed");
+  }
+  return data;
+}
+
+export async function queryRag(question: string, topK = 2, documentId?: string): Promise<any> {
   const baseUrl = getBaseUrl();
 
   try {
@@ -337,6 +516,7 @@ export async function queryRag(question: string, topK = 2): Promise<any> {
       body: JSON.stringify({
         question,
         top_k: topK,
+        document_id: documentId || null,
       }),
     });
 
@@ -347,11 +527,13 @@ export async function queryRag(question: string, topK = 2): Promise<any> {
     }
 
     return data;
-  } catch {
+  } catch (e) {
     return {
       status: "error",
       answer:
-        "RAG query failed. Please upload a PDF first and make sure Ollama is running.",
+        e instanceof Error
+          ? e.message
+          : "RAG query failed. Please upload a PDF first and make sure Ollama is running.",
       sources: [],
     };
   }
@@ -390,6 +572,110 @@ export async function fetchPipelineStatus(): Promise<any> {
   }
 
   return response.json();
+}
+
+export async function exportColabPackage(config: {
+  datasetId: string;
+  baseModel: string;
+  trainingSteps: number;
+  learningRate: number;
+  maxExamples: number;
+  maxSeqLength: number;
+  loraR: number;
+  loraAlpha: number;
+  driveRoot?: string;
+}): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/colab/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "Colab package export failed");
+  }
+
+  return data;
+}
+
+export async function exportKagglePackage(config: {
+  datasetId: string;
+  kaggleUsername: string;
+  baseModel: string;
+  trainingSteps: number;
+  learningRate: number;
+  maxExamples: number;
+  maxSeqLength: number;
+  loraR: number;
+  loraAlpha: number;
+}): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/kaggle/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "Kaggle package export failed");
+  }
+
+  return data;
+}
+
+export async function runKaggleJob(jobId: string): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/kaggle/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobId }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "Kaggle job submission failed");
+  }
+
+  return data;
+}
+
+export async function fetchKaggleStatus(jobId: string): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/kaggle/status/${jobId}`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch Kaggle status");
+  }
+
+  return response.json();
+}
+
+export async function downloadKaggleOutput(jobId: string): Promise<any> {
+  const baseUrl = getBaseUrl();
+
+  const response = await fetch(`${baseUrl}/kaggle/download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobId }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.status === "error") {
+    throw new Error(data.message || "Kaggle output download failed");
+  }
+
+  return data;
 }
 
 export async function saveSettings(settings: {

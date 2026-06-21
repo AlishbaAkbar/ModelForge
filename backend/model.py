@@ -37,3 +37,34 @@ class FineTunedModel(Base):
     hf_repo = Column(String, default="")
     accuracy = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Deployment(Base):
+    __tablename__ = "deployments"
+
+    id = Column(String, primary_key=True, index=True)
+    model_id = Column(String, ForeignKey("models.id"))
+    training_job_id = Column(String, default="")
+    runtime = Column(String, default="ollama")
+    runtime_model = Column(String, default="")
+    adapter_path = Column(String, default="")
+    modelfile_path = Column(String, default="")
+    status = Column(String, default="pending")
+    logs = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RAGDocument(Base):
+    __tablename__ = "rag_documents"
+
+    id = Column(String, primary_key=True, index=True)
+    filename = Column(String)
+    owner = Column(String, default="local-user")
+    path = Column(String)
+    content_hash = Column(String, default="")
+    chunk_count = Column(Integer, default=0)
+    embedding_status = Column(String, default="pending")
+    error = Column(Text, default="")
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    indexed_at = Column(DateTime, nullable=True)
